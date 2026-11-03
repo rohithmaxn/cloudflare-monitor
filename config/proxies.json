@@ -1,6 +1,4 @@
 {
-  "proxies": [
-    "http://127.0.0.1:8080"
-  ],
+  "proxies": [],
   "health_check_url": "https://httpbin.org/ip"
 }

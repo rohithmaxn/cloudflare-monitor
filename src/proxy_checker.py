@@ -1,18 +1,21 @@
 
-import asyncio
 import time
 
 import httpx
-
+import asyncio
 
 TIMEOUT = 15
 
 
-async def check_proxy(proxy_url, health_check_url):
+async def check_proxy(
+    proxy_url,
+    health_check_url,
+    transport=None,
+):
     start_time = time.perf_counter()
 
     result = {
-        "proxy": proxy_url,
+        "proxy": redact_proxy(proxy_url),
         "healthy": False,
         "status_code": None,
         "response_time_ms": None,
@@ -21,7 +24,8 @@ async def check_proxy(proxy_url, health_check_url):
 
     try:
         async with httpx.AsyncClient(
-            proxy=proxy_url,
+            proxy=proxy_url if transport is None else None,
+            transport=transport,
             timeout=TIMEOUT,
             follow_redirects=True,
         ) as client:
@@ -48,10 +52,21 @@ async def check_proxy(proxy_url, health_check_url):
     return result
 
 
-async def check_all_proxies(
-    proxies,
-    health_check_url,
-):
+def redact_proxy(proxy_url):
+    if "@" not in proxy_url:
+        return proxy_url
+
+    scheme, remainder = proxy_url.split(
+        "://", 1
+    )
+
+    credentials, address = remainder.rsplit(
+        "@", 1
+    )
+
+    return f"{scheme}://***:***@{address}"
+
+async def check_all_proxies(proxies, health_check_url):
     tasks = [
         check_proxy(proxy, health_check_url)
         for proxy in proxies
