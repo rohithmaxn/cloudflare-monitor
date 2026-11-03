@@ -2,7 +2,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-
+import json
+import run_monitor
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUN_MONITOR = PROJECT_ROOT / "run_monitor.py"
@@ -82,3 +84,59 @@ def test_count_runs_and_appends_history(tmp_path):
 
     records = [json.loads(line) for line in new_lines]
     assert [record["run_number"] for record in records] == [1, 2]
+    
+
+
+def test_load_targets_from_config(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    config_file = config_dir / "targets.json"
+    config_file.write_text(
+        json.dumps({
+            "targets": [
+                "https://example.com",
+                "https://httpbin.org/status/200",
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    targets = run_monitor.load_targets()
+
+    assert targets == [
+        "https://example.com",
+        "https://httpbin.org/status/200",
+    ]    
+
+
+def test_load_targets_rejects_empty_list(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    (config_dir / "targets.json").write_text(
+        json.dumps({"targets": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="non-empty targets list"):
+        run_monitor.load_targets()
+
+
+def test_load_targets_rejects_invalid_url(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    (config_dir / "targets.json").write_text(
+        json.dumps({"targets": ["not-a-url"]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="valid HTTP or HTTPS URL"):
+        run_monitor.load_targets()    

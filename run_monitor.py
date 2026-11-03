@@ -10,12 +10,34 @@ from src.proxy_checker import check_all_proxies
 
 NAME = "ChatGPT (GPT-6)"
 
-DEFAULT_TARGETS = [
-    "https://example.com",
-    "https://httpbin.org/status/200",
-    "https://httpbin.org/status/404",
-]
+def load_targets():
+    config_path = Path("config/targets.json")
 
+    if not config_path.exists():
+        raise FileNotFoundError(
+            "Missing config/targets.json"
+        )
+
+    config = json.loads(
+        config_path.read_text(encoding="utf-8")
+    )
+
+    targets = config.get("targets")
+
+    if not isinstance(targets, list) or not targets:
+        raise ValueError(
+            "config/targets.json must contain a non-empty targets list"
+        )
+
+    if not all(
+        isinstance(url, str) and url.startswith(("http://", "https://"))
+        for url in targets
+    ):
+        raise ValueError(
+            "Each target must be a valid HTTP or HTTPS URL"
+        )
+
+    return targets
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -76,7 +98,7 @@ def load_proxy_config():
 
 async def main():
     args = parse_args()
-    targets = args.urls if args.urls else DEFAULT_TARGETS
+    targets = args.urls if args.urls else load_targets()
 
     print(f"Name: {NAME}")
     print(
