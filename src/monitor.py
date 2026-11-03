@@ -133,15 +133,17 @@ async def check_with_proxy_failover(
             timeout=TIMEOUT,
             follow_redirects=True,
         ) as client:
-            return await check_website(
+            result = await check_website(
                 url,
                 client,
                 response_time_threshold_ms,
             )
+            result["proxy_attempts"] = 0
+            return result
 
     last_result = None
 
-    for proxy_url in proxies:
+    for attempt_number, proxy_url in enumerate(proxies, start=1):
         async with httpx.AsyncClient(
             proxy=proxy_url,
             timeout=TIMEOUT,
@@ -154,6 +156,7 @@ async def check_with_proxy_failover(
                 proxy_url=proxy_url,
             )
 
+        result["proxy_attempts"] = attempt_number
         last_result = result
 
         # Retry only transport failures.

@@ -301,6 +301,7 @@ def test_proxy_failover_tries_next_proxy(monkeypatch):
 
         assert result["outcome"] == "reachable"
         assert result["proxy"] == proxies[1]
+        assert result["proxy_attempts"] == 2
         assert attempts == proxies
 
-    run_async(test())    
+    run_async(test())
