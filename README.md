@@ -51,6 +51,78 @@ cloudflare-monitor/
 └── README.md
 ```
 
+## Architecture
+
+```mermaid
+flowchart TD
+    A["config/targets.json"] --> B["run_monitor.py"]
+    C["config/proxies.json"] --> B
+
+    B --> D["Async Website Monitor"]
+    B --> E["Proxy Health Checker"]
+
+    D --> F["Proxy Rotator"]
+    F --> G["HTTPX Requests"]
+    G --> H["Response Classification"]
+
+    E --> I["Proxy Health Results"]
+    H --> J["Structured JSON Report"]
+
+    I --> J
+    J --> K["reports/results.json"]
+    J --> L["reports/history.jsonl"]
+
+    M["pytest Tests"] --> N["GitHub Actions CI"]
+
+
+### Example report
+
+The following is an illustrative report showing a reachable website and an HTTP error. Actual response times and timestamps will vary.
+
+```json
+{
+  "run_number": 1,
+  "generated_at": "2026-11-03T10:00:00+00:00",
+  "total_website_checks": 2,
+  "total_proxy_checks": 0,
+  "configured_proxy_count": 0,
+  "proxy_rotation_enabled": false,
+  "summary": {
+    "reachable": 1,
+    "slow": 0,
+    "http_errors": 1,
+    "request_failures": 0,
+    "cloudflare_indicators": 0,
+    "challenges_detected": 0
+  },
+  "website_results": [
+    {
+      "url": "https://example.com",
+      "timestamp": "2026-11-03T10:00:00+00:00",
+      "status_code": 200,
+      "response_time_ms": 187.0,
+      "cloudflare": false,
+      "challenge_detected": false,
+      "outcome": "reachable",
+      "error": null,
+      "proxy": null
+    },
+    {
+      "url": "https://httpbin.org/status/404",
+      "timestamp": "2026-11-03T10:00:00+00:00",
+      "status_code": 404,
+      "response_time_ms": 789.0,
+      "cloudflare": false,
+      "challenge_detected": false,
+      "outcome": "http_error",
+      "error": null,
+      "proxy": null
+    }
+  ],
+  "proxy_results": []
+}
+```
+
 ## Setup
 
 Run these commands in PowerShell from the project directory:
