@@ -134,15 +134,29 @@ async def main():
     history_file = reports_dir / "history.jsonl"
 
     for run_number in range(1, args.count + 1):
-        website_results = await monitor_websites(
-            targets,
-            response_time_threshold_ms,
-            proxies=config["proxies"],
-        )
-
         proxy_results = await check_all_proxies(
             config["proxies"],
             config["health_check_url"],
+        )
+
+        healthy_proxies = [
+            proxy
+            for proxy, result in zip(
+                config["proxies"],
+                proxy_results,
+            )
+            if result["healthy"]
+        ]
+
+        healthy_proxies = get_healthy_proxies(
+            config["proxies"],
+            proxy_results,
+        )
+
+        website_results = await monitor_websites(
+            targets,
+            response_time_threshold_ms,
+            proxies=healthy_proxies,
         )
 
         summary = {
@@ -213,7 +227,31 @@ async def main():
 
     print(f"\nLatest report saved to: {output_file}")
     print(f"Run history appended to: {history_file}")
+    
+    
 
+def get_healthy_proxies(proxies, proxy_results):
+    return [
+        proxy
+        for proxy, result in zip(proxies, proxy_results)
+        if result["healthy"]
+    ]
 
+def test_get_healthy_proxies_excludes_unhealthy():
+    proxies = [
+        "http://healthy-proxy:8080",
+        "http://unhealthy-proxy:8080",
+    ]
+
+    results = [
+        {"healthy": True},
+        {"healthy": False},
+    ]
+
+    assert run_monitor.get_healthy_proxies(
+        proxies,
+        results,
+    ) == ["http://healthy-proxy:8080"]
+    
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) 

@@ -2,7 +2,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-import json
 import run_monitor
 import pytest
 
@@ -141,3 +140,20 @@ def test_load_targets_rejects_invalid_url(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="valid HTTP or HTTPS URL"):
         run_monitor.load_targets()    
+        
+
+def test_get_healthy_proxies_excludes_unhealthy():
+    proxies = [
+        "http://healthy-proxy:8080",
+        "http://unhealthy-proxy:8080",
+    ]
+
+    results = [
+        {"healthy": True},
+        {"healthy": False},
+    ]
+
+    assert run_monitor.get_healthy_proxies(
+        proxies,
+        results,
+    ) == ["http://healthy-proxy:8080"]
