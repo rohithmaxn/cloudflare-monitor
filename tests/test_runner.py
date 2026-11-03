@@ -85,8 +85,6 @@ def test_count_runs_and_appends_history(tmp_path):
     records = [json.loads(line) for line in new_lines]
     assert [record["run_number"] for record in records] == [1, 2]
     
-
-
 def test_load_targets_from_config(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -97,19 +95,22 @@ def test_load_targets_from_config(tmp_path, monkeypatch):
             "targets": [
                 "https://example.com",
                 "https://httpbin.org/status/200",
-            ]
+            ],
+            "response_time_threshold_ms": 1500,
         }),
         encoding="utf-8",
     )
 
     monkeypatch.chdir(tmp_path)
 
-    targets = run_monitor.load_targets()
+    targets, threshold = run_monitor.load_targets()
 
     assert targets == [
         "https://example.com",
         "https://httpbin.org/status/200",
-    ]    
+    ]
+
+    assert threshold == 1500
 
 
 def test_load_targets_rejects_empty_list(tmp_path, monkeypatch):

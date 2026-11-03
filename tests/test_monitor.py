@@ -112,3 +112,127 @@ def test_monitor_detects_cloudflare_challenge():
         )
 
     run_async(test())
+
+def test_monitor_classifies_slow_response(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    import src.monitor as monitor_module
+
+    async def test():
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(200)
+        )
+
+        start_time = datetime(
+            2026, 1, 1, tzinfo=timezone.utc
+        )
+
+        times = iter([
+            start_time,
+            start_time + timedelta(seconds=1.6),
+        ])
+
+        monkeypatch.setattr(
+            monitor_module,
+            "datetime",
+            type(
+                "MockDatetime",
+                (),
+                {
+                    "now": staticmethod(
+                        lambda tz=None: next(times)
+                    )
+                },
+            ),
+        )
+
+        async with httpx.AsyncClient(
+            transport=transport
+        ) as client:
+            result = await check_website(
+                "https://example.com",
+                client,
+                response_time_threshold_ms=1500,
+            )
+
+        assert result["status_code"] == 200
+        assert result["response_time_ms"] == 1600.0
+        assert result["outcome"] == "slow"
+
+    run_async(test())
+    
+def test_monitor_assigns_proxies_round_robin(monkeypatch):
+    import src.monitor as monitor_module
+
+    selected_proxies = []
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = ""
+
+        @property
+        def is_success(self):
+            return True
+
+    class FakeAsyncClient:
+        def __init__(
+            self,
+            proxy=None,
+            timeout=None,
+            follow_redirects=None,
+        ):
+            self.proxy = proxy
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type,
+            exc,
+            traceback,
+        ):
+            return False
+
+        async def get(self, url):
+            selected_proxies.append(self.proxy)
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        monitor_module.httpx,
+        "AsyncClient",
+        FakeAsyncClient,
+    )
+
+    async def test():
+        proxies = [
+            "http://proxy-a.example:8080",
+            "http://proxy-b.example:8080",
+        ]
+
+        results = await monitor_module.monitor_websites(
+            [
+                "https://example.com/1",
+                "https://example.com/2",
+                "https://example.com/3",
+            ],
+            proxies=proxies,
+        )
+
+        assert len(results) == 3
+        assert selected_proxies == [
+            proxies[0],
+            proxies[1],
+            proxies[0],
+        ]
+
+        assert [
+            result["proxy"]
+            for result in results
+        ] == [
+            proxies[0],
+            proxies[1],
+            proxies[0],
+        ]
+
+    run_async(test())    

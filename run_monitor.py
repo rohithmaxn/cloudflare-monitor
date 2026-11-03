@@ -8,7 +8,8 @@ from src.monitor import monitor_websites
 from src.proxy_checker import check_all_proxies
 
 
-NAME = "ChatGPT (GPT-6)"
+NAME = "Cloudflare Monitor"
+
 
 def load_targets():
     config_path = Path("config/targets.json")
@@ -23,6 +24,9 @@ def load_targets():
     )
 
     targets = config.get("targets")
+    threshold = config.get(
+        "response_time_threshold_ms", 1500
+    )
 
     if not isinstance(targets, list) or not targets:
         raise ValueError(
@@ -30,14 +34,25 @@ def load_targets():
         )
 
     if not all(
-        isinstance(url, str) and url.startswith(("http://", "https://"))
+        isinstance(url, str)
+        and url.startswith(("http://", "https://"))
         for url in targets
     ):
         raise ValueError(
             "Each target must be a valid HTTP or HTTPS URL"
         )
 
-    return targets
+    if (
+        not isinstance(threshold, (int, float))
+        or isinstance(threshold, bool)
+        or threshold <= 0
+    ):
+        raise ValueError(
+            "response_time_threshold_ms must be a positive number"
+        )
+
+    return targets, threshold
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -98,7 +113,8 @@ def load_proxy_config():
 
 async def main():
     args = parse_args()
-    targets = args.urls if args.urls else load_targets()
+    configured_targets, response_time_threshold_ms = load_targets()
+    targets = args.urls if args.urls else configured_targets
 
     print(f"Name: {NAME}")
     print(
@@ -118,7 +134,11 @@ async def main():
     history_file = reports_dir / "history.jsonl"
 
     for run_number in range(1, args.count + 1):
-        website_results = await monitor_websites(targets)
+        website_results = await monitor_websites(
+            targets,
+            response_time_threshold_ms,
+            proxies=config["proxies"],
+        )
 
         proxy_results = await check_all_proxies(
             config["proxies"],
@@ -130,12 +150,19 @@ async def main():
                 result["outcome"] == "reachable"
                 for result in website_results
             ),
+            "slow": sum(
+                result["outcome"] == "slow"
+                for result in website_results
+            ),
             "http_errors": sum(
                 result["outcome"] == "http_error"
                 for result in website_results
             ),
             "request_failures": sum(
-                result["outcome"] == "request_error"
+                result["outcome"] in (
+                    "timeout",
+                    "connection_error",
+                )
                 for result in website_results
             ),
             "cloudflare_indicators": sum(
@@ -155,6 +182,8 @@ async def main():
             ).isoformat(),
             "total_website_checks": len(website_results),
             "total_proxy_checks": len(proxy_results),
+            "configured_proxy_count": len(config["proxies"]),
+            "proxy_rotation_enabled": bool(config["proxies"]),
             "summary": summary,
             "website_results": website_results,
             "proxy_results": proxy_results,
@@ -174,6 +203,7 @@ async def main():
         print(
             f"Run {run_number}/{args.count}: "
             f"{summary['reachable']} reachable, "
+            f"{summary['slow']} slow, "
             f"{summary['http_errors']} HTTP errors, "
             f"{summary['request_failures']} request failures"
         )
@@ -183,6 +213,7 @@ async def main():
 
     print(f"\nLatest report saved to: {output_file}")
     print(f"Run history appended to: {history_file}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
