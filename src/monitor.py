@@ -1,9 +1,15 @@
 
-import httpx
+import asyncio
 from datetime import datetime, timezone
 
+import httpx
 
-def check_website(url):
+
+TIMEOUT = 15
+CONCURRENCY = 3
+
+
+async def check_website(url, client):
     start_time = datetime.now(timezone.utc)
 
     result = {
@@ -18,11 +24,7 @@ def check_website(url):
     }
 
     try:
-        response = httpx.get(
-            url,
-            timeout=15,
-            follow_redirects=True,
-        )
+        response = await client.get(url)
 
         elapsed = (
             datetime.now(timezone.utc) - start_time
@@ -72,3 +74,25 @@ def check_website(url):
         result["error"] = str(exc)
 
     return result
+
+
+async def monitor_websites(urls):
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+
+    async with httpx.AsyncClient(
+        timeout=TIMEOUT,
+        follow_redirects=True,
+    ) as client:
+
+        async def limited_check(url):
+            async with semaphore:
+                return await check_website(
+                    url, client
+                )
+
+        tasks = [
+            limited_check(url)
+            for url in urls
+        ]
+
+        return await asyncio.gather(*tasks)

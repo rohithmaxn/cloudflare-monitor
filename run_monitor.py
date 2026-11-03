@@ -4,27 +4,27 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.monitor import check_website
+from src.monitor import monitor_websites
 
 
 NAME = "ChatGPT (GPT-6)"
 
 TARGETS = [
     "https://example.com",
+    "https://httpbin.org/status/200",
+    "https://httpbin.org/status/404",
 ]
 
 
 async def main():
     print(f"Name: {NAME}")
-    print(f"Today's date: {datetime.now().strftime('%Y-%m-%d')}")
+    print(
+        f"Today's date: "
+        f"{datetime.now().strftime('%Y-%m-%d')}"
+    )
     print("-" * 50)
 
-    results = await asyncio.gather(
-        *[
-            asyncio.to_thread(check_website, url)
-            for url in TARGETS
-        ]
-    )
+    results = await monitor_websites(TARGETS)
 
     report = {
         "generated_at": datetime.now(
