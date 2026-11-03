@@ -13,6 +13,7 @@ An asynchronous Python website monitoring project that checks website availabili
 - Round-robin proxy selection for configured proxies
 - JSON reports and JSONL run history
 - Automated tests using pytest and mocked HTTP responses
+- GitHub Actions CI for automated test execution
 
 ## Important limitation
 
@@ -30,6 +31,9 @@ Proxy rotation is intended for authorized monitoring and testing. Use only websi
 
 ```text
 cloudflare-monitor/
+├── .github/
+│   └── workflows/
+│       └── tests.yml
 ├── config/
 │   ├── targets.json
 │   └── proxies.json
@@ -73,54 +77,6 @@ flowchart TD
     J --> L["reports/history.jsonl"]
 
     M["pytest Tests"] --> N["GitHub Actions CI"]
-
-
-### Example report
-
-The following is an illustrative report showing a reachable website and an HTTP error. Actual response times and timestamps will vary.
-
-```json
-{
-  "run_number": 1,
-  "generated_at": "2026-11-03T10:00:00+00:00",
-  "total_website_checks": 2,
-  "total_proxy_checks": 0,
-  "configured_proxy_count": 0,
-  "proxy_rotation_enabled": false,
-  "summary": {
-    "reachable": 1,
-    "slow": 0,
-    "http_errors": 1,
-    "request_failures": 0,
-    "cloudflare_indicators": 0,
-    "challenges_detected": 0
-  },
-  "website_results": [
-    {
-      "url": "https://example.com",
-      "timestamp": "2026-11-03T10:00:00+00:00",
-      "status_code": 200,
-      "response_time_ms": 187.0,
-      "cloudflare": false,
-      "challenge_detected": false,
-      "outcome": "reachable",
-      "error": null,
-      "proxy": null
-    },
-    {
-      "url": "https://httpbin.org/status/404",
-      "timestamp": "2026-11-03T10:00:00+00:00",
-      "status_code": 404,
-      "response_time_ms": 789.0,
-      "cloudflare": false,
-      "challenge_detected": false,
-      "outcome": "http_error",
-      "error": null,
-      "proxy": null
-    }
-  ],
-  "proxy_results": []
-}
 ```
 
 ## Setup
@@ -236,7 +192,55 @@ The report includes:
 - Individual website results
 - Individual proxy health results
 
-Website outcomes include:
+### Example report
+
+The following is an illustrative report showing a reachable website and an HTTP error. Actual response times and timestamps will vary.
+
+```json
+{
+  "run_number": 1,
+  "generated_at": "2026-11-03T10:00:00+00:00",
+  "total_website_checks": 2,
+  "total_proxy_checks": 0,
+  "configured_proxy_count": 0,
+  "proxy_rotation_enabled": false,
+  "summary": {
+    "reachable": 1,
+    "slow": 0,
+    "http_errors": 1,
+    "request_failures": 0,
+    "cloudflare_indicators": 0,
+    "challenges_detected": 0
+  },
+  "website_results": [
+    {
+      "url": "https://example.com",
+      "timestamp": "2026-11-03T10:00:00+00:00",
+      "status_code": 200,
+      "response_time_ms": 187.0,
+      "cloudflare": false,
+      "challenge_detected": false,
+      "outcome": "reachable",
+      "error": null,
+      "proxy": null
+    },
+    {
+      "url": "https://httpbin.org/status/404",
+      "timestamp": "2026-11-03T10:00:00+00:00",
+      "status_code": 404,
+      "response_time_ms": 789.0,
+      "cloudflare": false,
+      "challenge_detected": false,
+      "outcome": "http_error",
+      "error": null,
+      "proxy": null
+    }
+  ],
+  "proxy_results": []
+}
+```
+
+### Website outcome definitions
 
 | Outcome | Meaning |
 |---|---|
@@ -259,7 +263,7 @@ pytest -v
 
 The test suite uses mocked HTTP responses for deterministic checks. It does not require live proxy services.
 
-## Current test coverage
+### Current test coverage
 
 - Required monitoring result fields
 - HTTP 200 and HTTP 404 classification
@@ -270,6 +274,8 @@ The test suite uses mocked HTTP responses for deterministic checks. It does not 
 - Proxy health-check behavior
 - Target configuration validation
 
+The current test suite contains 17 passing tests.
+
 ## Example summary
 
 ```text
@@ -279,13 +285,22 @@ Latest report saved to: reports\results.json
 Run history appended to: reports\history.jsonl
 ```
 
+## Continuous integration
+
+GitHub Actions runs the pytest suite on pushes and pull requests targeting the `main` branch.
+
+Workflow file:
+
+```text
+.github/workflows/tests.yml
+```
+
 ## Future improvements
 
 - Retry policies with configurable backoff
 - Proxy failure handling and automatic exclusion of unhealthy proxies
 - Monitoring dashboard
 - Historical response-time charts
-- CI pipeline for automated test execution
 - Alerting for outages and response-time thresholds
 
 ## Author
