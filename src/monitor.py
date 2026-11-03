@@ -14,7 +14,7 @@ DEFAULT_RESPONSE_TIME_THRESHOLD_MS = 1500
 
 
 def redact_proxy(proxy_url):
-    """Hide proxy username/password before including it in results."""
+    """Hide proxy username/password before including them in results."""
     if not proxy_url:
         return None
 
@@ -24,6 +24,7 @@ def redact_proxy(proxy_url):
         return proxy_url
 
     host = parts.hostname or ""
+
     if parts.port:
         host = f"{host}:{parts.port}"
 
@@ -108,7 +109,7 @@ async def check_website(
     except httpx.RequestError as exc:
         result["outcome"] = "connection_error"
 
-        # Avoid accidentally exposing proxy credentials in error text.
+        # Do not expose proxy credentials in error text.
         result["error"] = (
             "Request failed through proxy"
             if proxy_url
@@ -118,13 +119,62 @@ async def check_website(
     return result
 
 
+async def check_with_proxy_failover(
+    url,
+    proxies,
+    response_time_threshold_ms=DEFAULT_RESPONSE_TIME_THRESHOLD_MS,
+):
+    """
+    Try proxies in order, moving to the next after a
+    timeout or connection error.
+    """
+    if not proxies:
+        async with httpx.AsyncClient(
+            timeout=TIMEOUT,
+            follow_redirects=True,
+        ) as client:
+            return await check_website(
+                url,
+                client,
+                response_time_threshold_ms,
+            )
+
+    last_result = None
+
+    for proxy_url in proxies:
+        async with httpx.AsyncClient(
+            proxy=proxy_url,
+            timeout=TIMEOUT,
+            follow_redirects=True,
+        ) as client:
+            result = await check_website(
+                url,
+                client,
+                response_time_threshold_ms,
+                proxy_url=proxy_url,
+            )
+
+        last_result = result
+
+        # Retry only transport failures.
+        if result["outcome"] not in (
+            "timeout",
+            "connection_error",
+        ):
+            return result
+
+    return last_result
+
+
 async def monitor_websites(
     urls,
     response_time_threshold_ms=DEFAULT_RESPONSE_TIME_THRESHOLD_MS,
     proxies=None,
 ):
     semaphore = asyncio.Semaphore(CONCURRENCY)
-    proxy_rotator = ProxyRotator(proxies or [])
+
+    configured_proxies = list(proxies or [])
+    proxy_rotator = ProxyRotator(configured_proxies)
 
     async with httpx.AsyncClient(
         timeout=TIMEOUT,
@@ -133,26 +183,32 @@ async def monitor_websites(
 
         async def limited_check(url):
             async with semaphore:
-                proxy_url = proxy_rotator.next_proxy()
+                first_proxy = proxy_rotator.next_proxy()
 
-                if proxy_url is None:
+                # No configured proxy: use direct monitoring.
+                if first_proxy is None:
                     return await check_website(
                         url,
                         direct_client,
                         response_time_threshold_ms,
                     )
 
-                async with httpx.AsyncClient(
-                    proxy=proxy_url,
-                    timeout=TIMEOUT,
-                    follow_redirects=True,
-                ) as proxy_client:
-                    return await check_website(
-                        url,
-                        proxy_client,
-                        response_time_threshold_ms,
-                        proxy_url=proxy_url,
-                    )
+                # Round-robin proxy is the first choice.
+                # Then try the remaining configured proxies.
+                proxy_order = [
+                    first_proxy,
+                    *[
+                        proxy
+                        for proxy in configured_proxies
+                        if proxy != first_proxy
+                    ],
+                ]
+
+                return await check_with_proxy_failover(
+                    url,
+                    proxy_order,
+                    response_time_threshold_ms,
+                )
 
         tasks = [
             limited_check(url)

@@ -236,3 +236,71 @@ def test_monitor_assigns_proxies_round_robin(monkeypatch):
         ]
 
     run_async(test())    
+    
+def test_proxy_failover_tries_next_proxy(monkeypatch):
+    import src.monitor as monitor_module
+
+    attempts = []
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = ""
+
+        @property
+        def is_success(self):
+            return True
+
+    class FakeAsyncClient:
+        def __init__(
+            self,
+            proxy=None,
+            timeout=None,
+            follow_redirects=None,
+        ):
+            self.proxy = proxy
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type,
+            exc,
+            traceback,
+        ):
+            return False
+
+        async def get(self, url):
+            attempts.append(self.proxy)
+
+            if self.proxy == "http://proxy-a.example:8080":
+                raise httpx.ConnectError(
+                    "Connection failed",
+                    request=httpx.Request("GET", url),
+                )
+
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        monitor_module.httpx,
+        "AsyncClient",
+        FakeAsyncClient,
+    )
+
+    async def test():
+        proxies = [
+            "http://proxy-a.example:8080",
+            "http://proxy-b.example:8080",
+        ]
+
+        result = await monitor_module.check_with_proxy_failover(
+            "https://example.com",
+            proxies,
+        )
+
+        assert result["outcome"] == "reachable"
+        assert result["proxy"] == proxies[1]
+        assert attempts == proxies
+
+    run_async(test())    
